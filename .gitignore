@@ -1,0 +1,27 @@
+.DS_Store
+build/
+DerivedData/
+*.xcodeproj/
+ClipForge/Info.plist
+xcuserdata/
+*.xcuserstate
+.swiftpm/
+Package.resolved
+
+# Bundled CLIs are copied locally from Homebrew (see README).
+# Keep the folder for the build's folder-reference but not its contents.
+ClipForge/Resources/Bin/*
+!ClipForge/Resources/Bin/.gitkeep
+
+# Reference samples may contain personal/professional content; users supply
+# their own (see README). Keep the folder so the build doesn't break.
+ClipForge/Resources/References/samples/*
+!ClipForge/Resources/References/samples/.gitkeep
+
+# macOS quarantine / metadata
+._*
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp

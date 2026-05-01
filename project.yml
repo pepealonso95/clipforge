@@ -1,0 +1,52 @@
+name: ClipForge
+options:
+  bundleIdPrefix: io.grux.clipforge
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_STYLE: Automatic
+    CODE_SIGN_IDENTITY: "-"
+    ENABLE_HARDENED_RUNTIME: NO
+
+targets:
+  ClipForge:
+    type: application
+    platform: macOS
+    sources:
+      - path: ClipForge
+        excludes:
+          - "Resources/**"
+          - "Info.plist"
+          - "**/.DS_Store"
+      - path: ClipForge/Resources/Bin
+        type: folder
+        buildPhase: resources
+      - path: ClipForge/Resources/Prompts
+        type: folder
+        buildPhase: resources
+      - path: ClipForge/Resources/References
+        type: folder
+        buildPhase: resources
+    info:
+      path: ClipForge/Info.plist
+      properties:
+        CFBundleName: ClipForge
+        CFBundleDisplayName: ClipForge
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        LSMinimumSystemVersion: "14.0"
+        NSHighResolutionCapable: true
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSDocumentsFolderUsageDescription: "ClipForge reads source video files and writes rendered clips."
+        NSDownloadsFolderUsageDescription: "ClipForge reads source video files and writes rendered clips."
+        NSDesktopFolderUsageDescription: "ClipForge reads source video files and writes rendered clips."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.grux.clipforge
+        GENERATE_INFOPLIST_FILE: NO

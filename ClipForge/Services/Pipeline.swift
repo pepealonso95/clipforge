@@ -44,6 +44,15 @@ final class Pipeline: ObservableObject {
         task?.cancel()
     }
 
+    func reset() {
+        guard !isRunning else { return }
+        log = []
+        error = nil
+        results = []
+        artifacts = nil
+        currentStage = nil
+    }
+
     func run(inputs: ProjectInputs, settings: AppSettings) {
         guard !isRunning else { return }
         isRunning = true

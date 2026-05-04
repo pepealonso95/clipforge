@@ -1,74 +1,161 @@
 import SwiftUI
-import AVKit
 
-/// Right-side panel: script picker + editable clips list with extend/trim/delete/reorder.
+/// Right-side pane for the active script: header (name/theme/duration), clips
+/// list, and the Save & Re-render action. Script selection happens in the
+/// top-level tab bar; mode switching (source vs final cut) lives on the player.
 struct ScriptEditorPane: View {
     @Binding var scripts: [Script]
-    @Binding var selectedIndex: Int
-    let transcript: Transcript
-    let masterDuration: Double
+    let selectedIndex: Int
+    /// True when the active script has unsaved changes since the last render.
+    /// Drives the Save & Re-render enabled/disabled appearance.
+    let isDirty: Bool
     let onPlayClip: (Clip) -> Void
     let onRerender: () -> Void
     let isRendering: Bool
     let renderError: String?
-    let stitchedURL: URL?
-    let onRevealOutput: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             header
             Divider()
-            if scripts.isEmpty {
-                Text("No scripts").foregroundStyle(.secondary)
-            } else {
-                clipsList
-                Divider()
-                renderControls
-                if let stitched = stitchedURL, FileManager.default.fileExists(atPath: stitched.path) {
-                    StitchedPreview(url: stitched)
-                }
-            }
+            clipsList
+            Divider()
+            renderControls
         }
-        .padding(12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     // MARK: - Subviews
 
+    @ViewBuilder
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Scripts").font(.headline)
-                Spacer()
-                Button { onRevealOutput() } label: {
-                    Label("Reveal", systemImage: "folder")
+        if let s = currentScript {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(s.name)
+                    .font(.title3).fontWeight(.semibold)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if !s.theme.isEmpty {
+                    Text(s.theme)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
                 }
-                .buttonStyle(.borderless)
+                durationBlock(s: s)
             }
-            if !scripts.isEmpty {
-                Picker("", selection: $selectedIndex) {
-                    ForEach(Array(scripts.enumerated()), id: \.offset) { idx, s in
-                        Text(s.name).tag(idx)
-                    }
-                }
-                .labelsHidden()
-                if scripts.indices.contains(selectedIndex) {
-                    let s = scripts[selectedIndex]
-                    HStack(spacing: 12) {
-                        Label(s.theme, systemImage: "tag")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Label("\(String(format: "%.1f", s.actualDuration))s / \(String(format: "%.1f", s.targetDurationSeconds))s",
-                              systemImage: "clock")
-                            .font(.caption)
-                            .foregroundStyle(durationColor(actual: s.actualDuration, target: s.targetDurationSeconds))
-                    }
-                }
-            }
+            .padding(14)
+        } else {
+            Text("No script selected")
+                .foregroundStyle(.secondary)
+                .padding(14)
         }
     }
 
+    private func durationBlock(s: Script) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Duration").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(String(format: "%.1f", s.actualDuration))s / \(String(format: "%.1f", s.targetDurationSeconds))s")
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(durationColor(actual: s.actualDuration, target: s.targetDurationSeconds))
+            }
+            ProgressView(
+                value: min(s.actualDuration / max(s.targetDurationSeconds, 0.01), 1.5),
+                total: 1.5
+            )
+            .tint(durationColor(actual: s.actualDuration, target: s.targetDurationSeconds))
+        }
+    }
+
+    @ViewBuilder
     private var clipsList: some View {
-        let bind = Binding<[Clip]>(
+        let bind = clipsBinding
+        if bind.wrappedValue.isEmpty {
+            emptyClips
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            List {
+                ForEach(bind, id: \.id) { $clip in
+                    ClipRow(
+                        clip: $clip,
+                        onPlay: { onPlayClip(clip) },
+                        onDelete: { deleteClip(id: clip.id) }
+                    )
+                }
+                .onMove(perform: moveClips)
+            }
+            .listStyle(.inset)
+            .frame(maxHeight: .infinity)
+        }
+    }
+
+    private var emptyClips: some View {
+        VStack(spacing: 8) {
+            Spacer()
+            Image(systemName: "checklist")
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(.tertiary)
+            Text("No clips in this script yet")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            Text("Click segments in the transcript to add them.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+    }
+
+    private var renderControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: onRerender) {
+                if isRendering {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Rendering…")
+                    }
+                    .frame(maxWidth: .infinity)
+                } else {
+                    Label("Save & Re-render", systemImage: "arrow.clockwise")
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(isRendering || currentClipsEmpty || !isDirty)
+            .help(disabledHelp)
+
+            if let renderError {
+                Text(renderError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .lineLimit(3)
+            }
+        }
+        .padding(14)
+    }
+
+    // MARK: - Derived
+
+    private var currentScript: Script? {
+        scripts.indices.contains(selectedIndex) ? scripts[selectedIndex] : nil
+    }
+
+    private var currentClipsEmpty: Bool {
+        currentScript?.clips.isEmpty ?? true
+    }
+
+    private var disabledHelp: String {
+        if isRendering { return "Rendering…" }
+        if currentClipsEmpty { return "Add clips from the transcript to enable rendering." }
+        if !isDirty { return "No changes since the last render." }
+        return ""
+    }
+
+    private var clipsBinding: Binding<[Clip]> {
+        Binding<[Clip]>(
             get: { scripts.indices.contains(selectedIndex) ? scripts[selectedIndex].clips : [] },
             set: { newClips in
                 if scripts.indices.contains(selectedIndex) {
@@ -76,43 +163,6 @@ struct ScriptEditorPane: View {
                 }
             }
         )
-        return List {
-            ForEach(bind, id: \.id) { $clip in
-                ClipRow(
-                    clip: $clip,
-                    transcript: transcript,
-                    masterDuration: masterDuration,
-                    onPlay: { onPlayClip(clip) },
-                    onDelete: { deleteClip(id: clip.id) }
-                )
-            }
-            .onMove(perform: moveClips)
-        }
-        .listStyle(.inset)
-        .frame(minHeight: 200, maxHeight: 380)
-    }
-
-    private var renderControls: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Button(action: onRerender) {
-                    if isRendering {
-                        HStack(spacing: 6) {
-                            ProgressView().controlSize(.small)
-                            Text("Rendering…")
-                        }
-                    } else {
-                        Label("Save & Re-render", systemImage: "arrow.clockwise")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isRendering)
-                Spacer()
-            }
-            if let renderError {
-                Text(renderError).font(.caption).foregroundStyle(.red).lineLimit(3)
-            }
-        }
     }
 
     // MARK: - Actions
@@ -136,8 +186,6 @@ struct ScriptEditorPane: View {
 
 private struct ClipRow: View {
     @Binding var clip: Clip
-    let transcript: Transcript
-    let masterDuration: Double
     let onPlay: () -> Void
     let onDelete: () -> Void
 
@@ -152,7 +200,7 @@ private struct ClipRow: View {
                     Image(systemName: "play.fill")
                 }
                 .buttonStyle(.borderless)
-                .help("Play this clip in the master player")
+                .help("Play this clip")
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                 }
@@ -162,119 +210,7 @@ private struct ClipRow: View {
             Text(clip.verbatim.trimmingCharacters(in: .whitespacesAndNewlines))
                 .font(.callout)
                 .lineLimit(4)
-            HStack(spacing: 6) {
-                Button { extendStart(by: -1) } label: { Image(systemName: "arrow.left.to.line") }
-                    .help("Extend start: include the previous segment")
-                Button { trimStart(by: 1) } label: { Image(systemName: "arrow.right.to.line") }
-                    .help("Trim start: drop the first segment")
-                Spacer().frame(width: 12)
-                Button { trimEnd(by: -1) } label: { Image(systemName: "arrow.left.to.line") }
-                    .help("Trim end: drop the last segment")
-                    .rotationEffect(.degrees(180))
-                Button { extendEnd(by: 1) } label: { Image(systemName: "arrow.right.to.line") }
-                    .help("Extend end: include the next segment")
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
         }
         .padding(.vertical, 4)
-    }
-
-    private func extendStart(by direction: Int) {
-        guard let prev = previousSegment(before: clip.sourceStart) else { return }
-        clip.sourceStart = max(0, prev.start)
-        refreshVerbatim()
-    }
-
-    private func trimStart(by direction: Int) {
-        guard let first = firstSegmentInClip(), let next = segmentAfter(first) else { return }
-        clip.sourceStart = next.start
-        refreshVerbatim()
-    }
-
-    private func extendEnd(by direction: Int) {
-        guard let next = nextSegment(after: clip.sourceEnd) else { return }
-        clip.sourceEnd = min(masterDuration, next.end)
-        refreshVerbatim()
-    }
-
-    private func trimEnd(by direction: Int) {
-        guard let last = lastSegmentInClip(), let prev = segmentBefore(last) else { return }
-        clip.sourceEnd = prev.end
-        refreshVerbatim()
-    }
-
-    // MARK: - Segment lookup helpers
-
-    private func previousSegment(before time: Double) -> TranscriptSegment? {
-        transcript.segments.last(where: { $0.end <= time + 0.01 })
-    }
-
-    private func nextSegment(after time: Double) -> TranscriptSegment? {
-        transcript.segments.first(where: { $0.start >= time - 0.01 })
-    }
-
-    private func firstSegmentInClip() -> TranscriptSegment? {
-        transcript.segments.first(where: { $0.start >= clip.sourceStart - 0.01 && $0.end <= clip.sourceEnd + 0.01 })
-    }
-
-    private func lastSegmentInClip() -> TranscriptSegment? {
-        transcript.segments.last(where: { $0.start >= clip.sourceStart - 0.01 && $0.end <= clip.sourceEnd + 0.01 })
-    }
-
-    private func segmentAfter(_ s: TranscriptSegment) -> TranscriptSegment? {
-        transcript.segments.first(where: { $0.start > s.start + 0.001 })
-    }
-
-    private func segmentBefore(_ s: TranscriptSegment) -> TranscriptSegment? {
-        transcript.segments.last(where: { $0.start < s.start - 0.001 })
-    }
-
-    private func refreshVerbatim() {
-        let inside = transcript.segments
-            .filter { $0.start >= clip.sourceStart - 0.01 && $0.end <= clip.sourceEnd + 0.01 }
-        let combined = inside
-            .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .joined(separator: " ")
-        if !combined.isEmpty {
-            clip.verbatim = combined
-        }
-    }
-}
-
-private struct StitchedPreview: View {
-    let url: URL
-    @State private var refreshKey: Date = Date()
-    @State private var player: AVPlayer
-
-    init(url: URL) {
-        self.url = url
-        self._player = State(initialValue: AVPlayer(url: url))
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text("Stitched preview")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button {
-                    player.pause()
-                    player.replaceCurrentItem(with: AVPlayerItem(url: url))
-                    refreshKey = Date()
-                } label: {
-                    Image(systemName: "arrow.clockwise.circle")
-                }
-                .buttonStyle(.borderless)
-                .help("Reload after re-render")
-            }
-            // Reload the AVPlayerItem to pick up freshly-rendered output.
-            AVPlayerViewRepresentable(player: player)
-                .frame(minHeight: 180)
-                .background(Color.black)
-                .cornerRadius(6)
-                .id(refreshKey)
-        }
     }
 }

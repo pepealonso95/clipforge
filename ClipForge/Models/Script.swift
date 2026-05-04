@@ -38,15 +38,29 @@ struct Clip: Codable, Identifiable {
     var sourceEnd: Double
     /// Verbatim text spoken in this clip (for the script.md and AI fidelity check).
     var verbatim: String
+    /// Optional B-roll / shot suggestion the AI produces for the rough-cut script.
+    /// Examples: "Shot: speaker on camera", "Stock: laptop with code", "Graphic: timeline diagram".
+    var visualSuggestion: String?
+    /// Optional sub-theme header. When present on a clip, the rough-cut renderer
+    /// breaks the table and emits a `## <header>` heading before this clip.
+    var sectionHeader: String?
 
     private enum CodingKeys: String, CodingKey {
-        case sourceStart, sourceEnd, verbatim
+        case sourceStart, sourceEnd, verbatim, visualSuggestion, sectionHeader
     }
 
-    init(sourceStart: Double, sourceEnd: Double, verbatim: String) {
+    init(
+        sourceStart: Double,
+        sourceEnd: Double,
+        verbatim: String,
+        visualSuggestion: String? = nil,
+        sectionHeader: String? = nil
+    ) {
         self.sourceStart = sourceStart
         self.sourceEnd = sourceEnd
         self.verbatim = verbatim
+        self.visualSuggestion = visualSuggestion
+        self.sectionHeader = sectionHeader
     }
 
     var duration: Double { max(0, sourceEnd - sourceStart) }

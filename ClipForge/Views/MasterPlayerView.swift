@@ -103,6 +103,14 @@ final class PlayerController: ObservableObject {
     func play() { player.play() }
     func pause() { player.pause() }
 
+    /// Swap the current item to a different URL (used when toggling between
+    /// the source master and the rendered stitched output).
+    func replace(url: URL) {
+        player.pause()
+        player.replaceCurrentItem(with: AVPlayerItem(url: url))
+        currentTime = 0
+    }
+
     func playClip(start: Double, end: Double) {
         seek(to: start)
         player.play()

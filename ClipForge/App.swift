@@ -8,7 +8,7 @@ struct ClipForgeApp: App {
         WindowGroup {
             ProjectView()
                 .environmentObject(settings)
-                .frame(minWidth: 900, minHeight: 640)
+                .frame(minWidth: 720, minHeight: 640)
         }
         .commands {
             CommandGroup(replacing: .newItem) {}

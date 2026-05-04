@@ -61,12 +61,27 @@ enum PromptBuilder {
               "theme": "founder lessons",
               "targetDurationSeconds": 10,
               "clips": [
-                {"sourceStart": 12.34, "sourceEnd": 14.78, "verbatim": "exact words spoken in this clip"}
+                {
+                  "sourceStart": 12.34,
+                  "sourceEnd": 14.78,
+                  "verbatim": "exact words spoken in this clip",
+                  "visualSuggestion": "Shot: speaker on camera, professional setting",
+                  "sectionHeader": "Why Culture Matters"
+                },
+                {
+                  "sourceStart": 23.10,
+                  "sourceEnd": 28.55,
+                  "verbatim": "the next quote, verbatim from the transcript",
+                  "visualSuggestion": "Punch in on speaker"
+                }
               ]
             }
           ]
         }
         ```
+        Notes:
+        - `visualSuggestion` is required on every clip — keep it short (≤12 words) and in the rough-cut style shown in the bundled reference scripts.
+        - `sectionHeader` is optional — set ONLY on the first clip of each sub-theme; leave it absent on subsequent clips in the same section.
         """)
 
         return sections.joined(separator: "\n\n")
